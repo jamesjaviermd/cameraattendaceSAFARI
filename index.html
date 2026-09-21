@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <!-- iOS Viewport optimization with viewport-fit=cover for notch/island support -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>iOS Selfie Attendance</title>
+  
+  <style>
+    :root {
+      --primary: #007aff;
+      --primary-active: #0056b3;
+      --bg: #000000;
+      --card-bg: rgba(28, 28, 30, 0.85);
+      --text: #ffffff;
+      --text-muted: #8e8e93;
+      --danger: #ff3b30;
+      --success: #34c759;
+      --warning: #ff9500;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+      /* Disable default touch highlight and selection on iOS */
+      -webkit-tap-highlight-color: transparent;
+      -webkit-touch-callout: none;
+      user-select: none;
+    }
+
+    /* Fill full screen taking safe area into account on iOS */
+    html, body {
+      width: 100%;
+      height: 100%;
+      height: -webkit-fill-available;
+      background-color: var(--bg);
+      color: var(--text);
+      overflow: hidden;
+      position: fixed;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      /* Safe area insets for iPhone notch/island and home indicator */
+      padding-top: env(safe-area-inset-top, 20px);
+      padding-bottom: env(safe-area-inset-bottom, 20px);
+      padding-left: env(safe-area-inset-left, 12px);
+      padding-right: env(safe-area-inset-right, 12px);
+    }
+
+    .app-container {
+      width: 100%;
+      max-width: 440px;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+    }
+
+    .header {
+      padding: 12px 16px;
+      text-align: center;
+      background: var(--card-bg);
+      -webkit-backdrop-filter: blur(20px);
+      backdrop-filter: blur(20px);
+      border-radius: 20px;
+      margin-bottom: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .header h1 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      letter-spacing: -0.4px;
+    }
+
+    .camera-flip-btn {
+      background: rgba(255, 255, 255, 0.15);
+      border: none;
+      color: white;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 1.1rem;
+      transition: background 0.2s;
+    }
+
+    .camera-flip-btn:active {
+      background: rgba(255, 255, 255, 0.3);
+    }
+
+    .camera-box {
+      position: relative;
+      width: 100%;
+      flex: 1;
+      background: #121212;
+      border-radius: 28px;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: 0 20px 40px rgba(0,0,0,0.8);
+    }
+
+    video, canvas {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    /* CSS Mirroring for Selfie mode on video display */
+    .mirror {
+      transform: scaleX(-1);
+      -webkit-transform: scaleX(-1);
+    }
+
+    .overlay-grid {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 14px;
+      z-index: 10;
+    }
+
+    .watermark-pattern {
+      position: absolute;
+      inset: -50%;
+      width: 200%;
+      height: 200%;
+      opacity: 0.15;
+      font-size: 11px;
+      font-weight: 700;
+      color: #ffffff;
+      word-break: break-all;
+      line-height: 1.6;
+      transform: rotate(-25deg);
+      pointer-events: none;
+      user-select: none;
+      z-index: 5;
+    }
+
+    .badge {
+      background: rgba(0, 0, 0, 0.6);
+      -webkit-backdrop-filter: blur(12px);
+      backdrop-filter: blur(12px);
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: #fff;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      pointer-events: auto;
+    }
+
+    .badge-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--danger);
+    }
+
+    .badge-dot.active {
+      background: var(--success);
+    }
+
+    .info-bar {
+      background: rgba(0, 0, 0, 0.65);
+      -webkit-backdrop-filter: blur(16px);
+      backdrop-filter: blur(16px);
+      padding: 10px 14px;
+      border-radius: 16px;
+      font-size: 0.75rem;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      pointer-events: auto;
+    }
+
+    .controls {
+      padding-top: 12px;
+      display: flex;
+      gap: 10px;
+      flex-direction: column;
+      width: 100%;
+    }
+
+    .btn {
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      padding: 16px;
+      border-radius: 16px;
+      font-size: 1rem;
+      font-weight: 600;
+      width: 100%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: background 0.2s, transform 0.1s;
+      box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
+    }
+
+    .btn:active {
+      background: var(--primary-active);
+      transform: scale(0.98);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.15);
+      color: #fff;
+      box-shadow: none;
+    }
+
+    .btn-secondary:active {
+      background: rgba(255, 255, 255, 0.25);
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 10px;
+    }
+
+    .error-msg {
+      background: rgba(255, 59, 48, 0.15);
+      border: 1px solid var(--danger);
+      color: #ff8078;
+      padding: 12px 14px;
+      border-radius: 16px;
+      font-size: 0.8rem;
+      line-height: 1.4;
+      margin-bottom: 8px;
+      display: none;
+      word-break: break-word;
+    }
+
+    .error-msg strong {
+      color: #ffffff;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    /* Manual Start Overlay for iOS Power Mode / autoplay blocking */
+    .start-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.85);
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      text-align: center;
+      border-radius: 28px;
+    }
+
+    .start-overlay p {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+    }
+
+    /* iOS Long Press Modal Fallback for Image Saving */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.8);
+      -webkit-backdrop-filter: blur(10px);
+      backdrop-filter: blur(10px);
+      z-index: 100;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .modal-card {
+      background: #1c1c1e;
+      border-radius: 24px;
+      padding: 20px;
+      max-width: 360px;
+      width: 100%;
+      text-align: center;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+    }
+
+    .modal-card img {
+      width: 100%;
+      border-radius: 16px;
+      margin: 12px 0;
+      user-select: auto !important;
+      -webkit-touch-callout: default !important;
+    }
+
+    .modal-card p {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="app-container">
+  <div class="header">
+    <div style="width:36px;"></div> <!-- Spacer -->
+    <h1>Selfie Attendance</h1>
+    <button class="camera-flip-btn" id="flipCameraBtn" onclick="toggleCamera()" title="Switch Camera">
+      􀌬 📸
+    </button>
+  </div>
+
+  <div id="errorBox" class="error-msg"></div>
+
+  <div class="camera-box">
+    <!-- Dynamic background watermark -->
+    <div class="watermark-pattern" id="watermarkBg"></div>
+    
+    <!-- Camera controls overlay -->
+    <div class="overlay-grid">
+      <div>
+        <div class="badge">
+          <span class="badge-dot" id="statusDot"></span>
+          <span id="statusText">Initializing Camera...</span>
+        </div>
+      </div>
+      <div class="info-bar">
+        <div id="liveClock" style="font-weight:700; font-size:0.85rem; margin-bottom:2px;">--/--/---- --:--:--</div>
+        <div id="liveGps" style="color:var(--text-muted);">Fetching Location...</div>
+      </div>
+    </div>
+
+    <!-- Fallback start button overlay for iOS Low Power Mode -->
+    <div class="start-overlay" id="startOverlay" style="display:none;">
+      <p>iOS Low Power Mode or Safari settings prevented auto-play.</p>
+      <button class="btn" style="width:auto; padding: 12px 24px;" onclick="enableCameraTap()">
+        ▶ Enable Camera
+      </button>
+    </div>
+
+    <!-- Video Element with explicit iOS Webkit inline attributes -->
+    <video id="video" class="mirror" autoplay playsinline webkit-playsinline muted></video>
+    <canvas id="canvas" style="display:none;"></canvas>
+  </div>
+
+  <div class="controls">
+    <button class="btn" id="captureBtn" onclick="takeSelfie()">
+      📷 Capture Attendance
+    </button>
+    <div class="btn-row" id="postCaptureBtns" style="display:none;">
+      <button class="btn btn-secondary" onclick="retakePhoto()">Retake</button>
+      <button class="btn" onclick="saveOrSharePhoto()">Save / Share</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Fallback for iOS Save Image -->
+<div class="modal-backdrop" id="imageModal">
+  <div class="modal-card">
+    <h3 style="font-weight:600; font-size:1rem;">Attendance Selfie</h3>
+    <img id="previewImage" alt="Attendance Selfie Preview" />
+    <p><strong>Tap & Hold image above</strong> to select <em>"Add to Photos"</em> or <em>"Save Image"</em>.</p>
+    <button class="btn btn-secondary" onclick="closeModal()">Close</button>
+  </div>
+</div>
+
+<script>
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  const watermarkBg = document.getElementById('watermarkBg');
+  const errorBox = document.getElementById('errorBox');
+  const statusDot = document.getElementById('statusDot');
+  const statusText = document.getElementById('statusText');
+  const liveClock = document.getElementById('liveClock');
+  const liveGps = document.getElementById('liveGps');
+  const startOverlay = document.getElementById('startOverlay');
+  
+  let currentStream = null;
+  let currentCoords = "GPS Unavailable";
+  let facingMode = "user"; // Default to front camera
+  let capturedBlob = null;
+
+  // Trigger iOS Haptic Feedback if supported
+  function triggerHaptic() {
+    if ("vibrate" in navigator) {
+      try { navigator.vibrate(40); } catch(e){}
+    }
+  }
+
+  // 1. Live Clock & Dynamic Watermark Generation
+  function updateClock() {
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit' });
+    const timeStr = now.toLocaleTimeString('en-US', { hour12: true });
+    const stamp = `${dateStr} ${timeStr}`;
+    
+    liveClock.innerText = stamp;
+
+    // Fill background watermark pattern
+    const patternText = `${stamp} • ${currentCoords} • `;
+    watermarkBg.innerText = patternText.repeat(90);
+  }
+  setInterval(updateClock, 1000);
+  updateClock();
+
+  // 2. Geolocation Acquisition with iOS High Accuracy options
+  if ("geolocation" in navigator) {
+    navigator.geolocation.watchPosition(
+      (pos) => {
+        currentCoords = `${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}`;
+        liveGps.innerText = `📍 ${currentCoords} (±${Math.round(pos.coords.accuracy)}m)`;
+      },
+      (err) => {
+        liveGps.innerText = "📍 GPS Permission Denied / Unavailable";
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
+  }
+
+  // 3. iOS-Optimized Camera Initialization
+  async function startCamera() {
+    showError(false);
+    stopCurrentStream();
+
+    // Set styling for mirroring depending on camera choice
+    if (facingMode === "user") {
+      video.classList.add('mirror');
+    } else {
+      video.classList.remove('mirror');
+    }
+
+    // iOS Safari Fix: Avoid exact constraints on facingMode to prevent OverconstrainedError
+    const constraintAttempts = [
+      { video: { facingMode: facingMode, width: { ideal: 1280 }, height: { ideal: 960 } } },
+      { video: { facingMode: facingMode } },
+      { video: true } // Universal fallback
+    ];
+
+    let stream = null;
+    let lastError = null;
+
+    for (const constraints of constraintAttempts) {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        if (stream) break;
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    if (stream) {
+      currentStream = stream;
+      video.srcObject = stream;
+      
+      // Essential attributes for iOS Safari inline playback
+      video.setAttribute("playsinline", "true");
+      video.setAttribute("webkit-playsinline", "true");
+      video.muted = true;
+
+      try {
+        await video.play();
+        startOverlay.style.display = 'none';
+        statusDot.classList.add('active');
+        statusText.innerText = 'Camera Ready';
+      } catch (playErr) {
+        // Handle iOS Autoplay restrictions (e.g. Low Power Mode)
+        console.warn("Autoplay blocked on iOS:", playErr);
+        startOverlay.style.display = 'flex';
+        statusDot.classList.remove('active');
+        statusText.innerText = 'Tap Enable to Start';
+      }
+    } else {
+      handleCameraError(lastError);
+    }
+  }
+
+  function enableCameraTap() {
+    triggerHaptic();
+    if (video) {
+      video.play().then(() => {
+        startOverlay.style.display = 'none';
+        statusDot.classList.add('active');
+        statusText.innerText = 'Camera Ready';
+      }).catch(err => {
+        handleCameraError(err);
+      });
+    }
+  }
+
+  function stopCurrentStream() {
+    if (currentStream) {
+      currentStream.getTracks().forEach(track => track.stop());
+      currentStream = null;
+    }
+  }
+
+  function toggleCamera() {
+    triggerHaptic();
+    facingMode = (facingMode === "user") ? "environment" : "user";
+    startCamera();
+  }
+
+  // iOS Safari Diagnostic Error Handler with iOS Settings Guidance
+  function handleCameraError(err) {
+    statusDot.classList.remove('active');
+    statusText.innerText = 'Camera Blocked';
+
+    let message = "<strong>Camera Access Failed</strong>";
+    if (!window.isSecureContext) {
+      message += "iOS Safari strictly requires HTTPS to access camera. Please host this page on HTTPS.";
+    } else if (err && (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError')) {
+      message += "Permission denied. On iPhone: Open <strong>Settings ➔ Safari ➔ Camera</strong> and allow access, then refresh this page.";
+    } else if (err && (err.name === 'NotReadableError' || err.name === 'TrackStartError')) {
+      message += "Camera is in use by another app or Safari tab. Close background camera apps and retry.";
+    } else {
+      message += `Details: ${err ? err.message || err.name : 'Unknown webkit error.'}`;
+    }
+
+    showError(true, message);
+  }
+
+  function showError(show, htmlMsg = '') {
+    errorBox.style.display = show ? 'block' : 'none';
+    errorBox.innerHTML = htmlMsg;
+  }
+
+  // 4. Capture & Render Selfie with Horizontal Mirroring Support
+  function takeSelfie() {
+    if (!currentStream) return;
+    triggerHaptic();
+
+    const width = video.videoWidth || 640;
+    const height = video.videoHeight || 480;
+    canvas.width = width;
+    canvas.height = height;
+
+    const ctx = canvas.getContext('2d');
+
+    // Handle horizontal flipping for selfie (front) camera so picture matches preview
+    ctx.save();
+    if (facingMode === "user") {
+      ctx.translate(width, 0);
+      ctx.scale(-1, 1);
+    }
+    ctx.drawImage(video, 0, 0, width, height);
+    ctx.restore();
+
+    // Draw Watermark Overlay directly onto Canvas Image
+    const now = new Date();
+    const stamp = `${now.toLocaleDateString()} ${now.toLocaleTimeString()}`;
+    
+    // Draw repeating diagonal background text
+    ctx.save();
+    ctx.rotate(-22 * Math.PI / 180);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.22)";
+    ctx.font = "bold 16px -apple-system, sans-serif";
+    
+    const lineText = `${stamp}   ${currentCoords}   `.repeat(10);
+    for (let y = -height; y < height * 2; y += 42) {
+      ctx.fillText(lineText, -width, y);
+    }
+    ctx.restore();
+
+    // Draw bottom info badge on image
+    const badgeHeight = Math.max(60, height * 0.12);
+    ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
+    ctx.fillRect(0, height - badgeHeight, width, badgeHeight);
+    
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 18px -apple-system, sans-serif";
+    ctx.fillText(`VERIFIED ATTENDANCE`, 20, height - (badgeHeight * 0.55));
+    ctx.font = "13px -apple-system, sans-serif";
+    ctx.fillStyle = "rgba(255,255,255,0.85)";
+    ctx.fillText(`${stamp} | GPS: ${currentCoords}`, 20, height - (badgeHeight * 0.22));
+
+    // Convert Canvas to Blob for native Web Share API
+    canvas.toBlob((blob) => {
+      capturedBlob = blob;
+    }, 'image/png');
+
+    // Toggle Views
+    video.style.display = 'none';
+    canvas.style.display = 'block';
+    watermarkBg.style.display = 'none';
+    document.getElementById('startOverlay').style.display = 'none';
+    document.getElementById('captureBtn').style.display = 'none';
+    document.getElementById('postCaptureBtns').style.display = 'flex';
+  }
+
+  function retakePhoto() {
+    triggerHaptic();
+    video.style.display = 'block';
+    canvas.style.display = 'none';
+    watermarkBg.style.display = 'block';
+    document.getElementById('captureBtn').style.display = 'flex';
+    document.getElementById('postCaptureBtns').style.display = 'none';
+    capturedBlob = null;
+  }
+
+  // 5. iOS Native Web Share & Download Fallback Handling
+  async function saveOrSharePhoto() {
+    triggerHaptic();
+    const fileName = `attendance_${Date.now()}.png`;
+
+    // Attempt Native Web Share API first (Best iOS Safari integration)
+    if (capturedBlob && navigator.canShare && navigator.share) {
+      const file = new File([capturedBlob], fileName, { type: 'image/png' });
+      if (navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: 'Selfie Attendance',
+            text: 'Attendance confirmation selfie.'
+          });
+          return;
+        } catch (err) {
+          if (err.name !== 'AbortError') {
+            console.warn("Share failed, opening fallback modal", err);
+          } else {
+            return; // User canceled share sheet
+          }
+        }
+      }
+    }
+
+    // Fallback for iOS browsers that block programmatic direct downloading:
+    // Show modal with press-and-hold instructions
+    const dataUrl = canvas.toDataURL('image/png');
+    document.getElementById('previewImage').src = dataUrl;
+    document.getElementById('imageModal').style.display = 'flex';
+  }
+
+  function closeModal() {
+    triggerHaptic();
+    document.getElementById('imageModal').style.display = 'none';
+  }
+
+  // Initialize on DOM ready
+  window.addEventListener('DOMContentLoaded', startCamera);
+</script>
+</body>
+</html>
